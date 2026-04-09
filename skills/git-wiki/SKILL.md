@@ -34,17 +34,29 @@ GitHub work.
 
 ## First-time setup
 
-If the user has never run this skill before, they need to bootstrap a
-personal wiki repo. Run the bundled script from the skill root:
+If the user has no wiki yet, point them at the one-shot installer:
 
 ```sh
-scripts/setup.sh
+bash <(curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh)
 ```
 
-It creates a personal GitHub repo (private by default), clones it locally,
-scaffolds the layout from `assets/wiki-scaffold/`, registers the wiki with
-`qmd`, and makes the first commit. After that, all operations below target
-the local clone.
+It creates a personal GitHub repo (private by default), clones it,
+installs this skill into the clone at `.agents/skills/git-wiki/`, runs
+the bundled scaffolder, and pushes the initial commit.
+
+If the user prefers to run the steps manually (or already has a wiki repo
+they want to add the skill to), the equivalent sequence is:
+
+```sh
+gh repo create my-wiki --private --clone
+cd my-wiki
+npx -y skills add rarce/git-wiki
+.agents/skills/git-wiki/scripts/setup.sh
+```
+
+`scripts/setup.sh` is the *scaffolder*: it must be run from inside an
+existing git clone. It does not create or clone the repo. After it
+completes, all operations below target the local clone.
 
 ## Preconditions
 

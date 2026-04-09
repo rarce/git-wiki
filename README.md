@@ -49,42 +49,62 @@ Two root-level navigation files:
 
 ## Install
 
-**Primary path — Agent Skills CLI:**
+### One-shot (recommended)
 
 ```sh
-npx skills add rarce/git-wiki
+bash <(curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh)
 ```
 
-Your agent will discover the skill at its next launch. Then bootstrap your
-personal wiki by running the bundled setup script from the installed skill's
-directory (path varies by client — check `npx skills list` or your agent's
-skills directory):
+The installer will:
+
+1. Check dependencies (`gh` authenticated, `git`, `node`, `npm`).
+2. Prompt for a wiki repo name, visibility (default: `private`), and local
+   clone path.
+3. `gh repo create` + `gh repo clone` — your wiki repo lands on GitHub and
+   on disk.
+4. `npx -y skills add rarce/git-wiki` — drops the skill into
+   `.agents/skills/git-wiki/` **inside the wiki clone**.
+5. Runs the bundled scaffolder
+   (`.agents/skills/git-wiki/scripts/setup.sh`), which lays out `CLAUDE.md`,
+   `index.md`, `log.md`, `pages/`, `people/`, `concepts/`, `sources/`,
+   registers the wiki with `qmd`, commits, and pushes.
+
+### Non-interactive (env vars)
+
+All three prompts can be pre-set:
 
 ```sh
-<path-to-installed-skill>/scripts/setup.sh
+WIKI_REPO=my-wiki WIKI_VIS=private WIKI_DIR=~/wiki \
+  bash <(curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh)
 ```
 
-**Manual alternative** — clone this repo and run the script directly:
+### Inspect-then-run (paranoid option)
 
 ```sh
-git clone https://github.com/rarce/git-wiki ~/devel/git-wiki
-~/devel/git-wiki/skills/git-wiki/scripts/setup.sh
+curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh -o install.sh
+less install.sh
+bash install.sh
 ```
 
-Then symlink `skills/git-wiki/SKILL.md` into whichever skills directory
-your agent discovers.
+### Manual install
 
-### What `setup.sh` does
+If you prefer to run each step yourself — for example, to add the skill to
+a wiki repo you already have:
 
-1. Check dependencies and `gh` auth.
-2. Prompt for a wiki repo name, visibility (default: private), and local path.
-3. Create the GitHub repo via `gh repo create` (skipped if it already exists).
-4. Clone it locally.
-5. Copy the scaffolding from `skills/git-wiki/assets/wiki-scaffold/` into the
-   clone: `CLAUDE.md`, `index.md`, `log.md`, plus `pages/` `people/`
-   `concepts/` `sources/`.
-6. Register the wiki as a `qmd` collection and run an initial `qmd embed`.
-7. Make the first commit and push it.
+```sh
+# 1. Create (or cd into) the wiki repo
+gh repo create my-wiki --private --clone
+cd my-wiki
+
+# 2. Install the skill into this repo
+npx -y skills add rarce/git-wiki
+
+# 3. Run the bundled scaffolder
+.agents/skills/git-wiki/scripts/setup.sh
+```
+
+The scaffolder expects to be run from inside a git clone; it will not
+create or clone a repo for you.
 
 ## Usage
 

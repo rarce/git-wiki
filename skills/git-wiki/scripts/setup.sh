@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# setup.sh — bootstrap a personal git-wiki on GitHub.
+# setup.sh — scaffold the Karpathy LLM-wiki layout into the current repo
+# and register it with qmd for on-device hybrid search.
 #
-# Creates (or reuses) a personal GitHub repo, clones it locally, scaffolds
-# the Karpathy LLM-wiki layout from ./templates, registers the wiki as a
-# qmd collection, makes an initial commit, and pushes.
+# Run this from inside an existing clone of your wiki repo. This script
+# does NOT create the GitHub repo or clone it — it assumes that has
+# already happened (by install.sh, by `gh repo create --clone`, or by
+# hand). See the repo README for the full install flow.
 #
-# Usage: ./setup.sh          (interactive prompts)
-#        REPO=my-wiki VIS=private LOCAL_DIR=~/wiki ./setup.sh  (non-interactive)
+# Usage:
+#   .agents/skills/git-wiki/scripts/setup.sh
+#
+# Optional override:
+#   WIKI_NAME=mywiki .agents/skills/git-wiki/scripts/setup.sh
+#     # (defaults to the basename of the git toplevel)
 
 set -euo pipefail
 
@@ -21,38 +27,33 @@ require() {
   command -v "$1" >/dev/null 2>&1 || die "missing dependency: $1 — $2"
 }
 
-prompt() {
-  # prompt VAR "label" "default"
-  local __var=$1 __label=$2 __default=${3-}
-  local __cur=${!__var-}
-  if [[ -n $__cur ]]; then return 0; fi  # already set via env
-  local __reply
-  if [[ -n $__default ]]; then
-    read -r -p "$__label [$__default]: " __reply || true
-    __reply="${__reply:-$__default}"
-  else
-    read -r -p "$__label: " __reply || true
-  fi
-  printf -v "$__var" '%s' "$__reply"
-}
-
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 TEMPLATE_DIR="$SKILL_DIR/assets/wiki-scaffold"
 [[ -d $TEMPLATE_DIR ]] || die "wiki-scaffold assets not found: $TEMPLATE_DIR"
 
 # --------------------------------------------------------------------------
+# resolve wiki directory — must already be a git repo
+# --------------------------------------------------------------------------
+WIKI_DIR="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z $WIKI_DIR ]]; then
+  die "not inside a git repo — create one first, e.g.:
+    gh repo create my-wiki --private --clone
+    cd my-wiki
+    npx -y skills add rarce/git-wiki
+    .agents/skills/git-wiki/scripts/setup.sh
+
+  Or use the one-shot installer:
+    bash <(curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh)"
+fi
+
+# --------------------------------------------------------------------------
 # dependency checks
 # --------------------------------------------------------------------------
 say "checking dependencies"
-require gh   "install from https://cli.github.com"
 require git  "install git"
 require node "install node (e.g. brew install node)"
 require npm  "install npm (comes with node)"
-
-if ! gh auth status >/dev/null 2>&1; then
-  die "gh is not authenticated — run: gh auth login"
-fi
 
 if ! git config --get user.email >/dev/null 2>&1; then
   warn "git user.email is not set — the initial commit will fail."
@@ -65,53 +66,22 @@ if ! command -v qmd >/dev/null 2>&1; then
     || die "npm install failed — try manually: npm i -g @tobilu/qmd"
 fi
 
-GH_USER="$(gh api user --jq .login)"
-say "GitHub user: $GH_USER"
-
-# --------------------------------------------------------------------------
-# prompts (env vars override)
-# --------------------------------------------------------------------------
-prompt REPO       "wiki repo name"            "wiki"
-prompt VIS        "visibility (private/public)" "private"
-prompt LOCAL_DIR  "local clone path"          "$HOME/$REPO"
-
-case "$VIS" in
-  private|public) ;;
-  *) die "visibility must be 'private' or 'public' (got: $VIS)" ;;
-esac
-
-# expand ~ in LOCAL_DIR
-LOCAL_DIR="${LOCAL_DIR/#~/$HOME}"
-
-say "repo:       $GH_USER/$REPO ($VIS)"
-say "local dir:  $LOCAL_DIR"
-
-# --------------------------------------------------------------------------
-# create GitHub repo (skip if exists)
-# --------------------------------------------------------------------------
-if gh repo view "$GH_USER/$REPO" >/dev/null 2>&1; then
-  warn "repo $GH_USER/$REPO already exists — skipping create"
-else
-  say "creating GitHub repo $GH_USER/$REPO"
-  gh repo create "$GH_USER/$REPO" "--$VIS" \
-    --description "Personal LLM-maintained wiki (Karpathy pattern)" \
-    >/dev/null
+# gh is used at runtime by the skill, not by this scaffolder — warn if absent.
+if ! command -v gh >/dev/null 2>&1; then
+  warn "gh CLI not found — install from https://cli.github.com so the skill can use it later"
+elif ! gh auth status >/dev/null 2>&1; then
+  warn "gh is installed but not authenticated — run: gh auth login"
 fi
 
 # --------------------------------------------------------------------------
-# clone
+# collection name
 # --------------------------------------------------------------------------
-if [[ -d "$LOCAL_DIR/.git" ]]; then
-  warn "$LOCAL_DIR already has a git repo — skipping clone"
-else
-  if [[ -e "$LOCAL_DIR" ]]; then
-    die "$LOCAL_DIR exists and is not a git repo — move it aside"
-  fi
-  say "cloning into $LOCAL_DIR"
-  gh repo clone "$GH_USER/$REPO" "$LOCAL_DIR"
-fi
+WIKI_NAME="${WIKI_NAME:-$(basename "$WIKI_DIR")}"
 
-cd "$LOCAL_DIR"
+say "wiki dir:    $WIKI_DIR"
+say "collection:  $WIKI_NAME"
+
+cd "$WIKI_DIR"
 
 # --------------------------------------------------------------------------
 # scaffold from templates
@@ -129,10 +99,9 @@ copy_tpl() {
     warn "$dst already exists — leaving as-is"
     return 0
   fi
-  # Substitute {{DATE}} and {{REPO}} in-flight.
   sed \
     -e "s|{{DATE}}|$TODAY|g" \
-    -e "s|{{REPO}}|$REPO|g" \
+    -e "s|{{REPO}}|$WIKI_NAME|g" \
     "$src" > "$dst"
 }
 
@@ -142,7 +111,6 @@ copy_tpl log.md          log.md
 copy_tpl README.md       README.md
 copy_tpl gitattributes   .gitattributes
 
-# keep empty scaffold dirs visible to git
 for d in pages people concepts sources; do
   [[ -f "$d/.gitkeep" ]] || : > "$d/.gitkeep"
 done
@@ -150,13 +118,13 @@ done
 # --------------------------------------------------------------------------
 # qmd: register collection and embed
 # --------------------------------------------------------------------------
-say "registering qmd collection '$REPO'"
-if qmd collection list 2>/dev/null | grep -qw "$REPO"; then
-  warn "qmd collection '$REPO' already exists — skipping"
+say "registering qmd collection '$WIKI_NAME'"
+if qmd collection list 2>/dev/null | grep -qw "$WIKI_NAME"; then
+  warn "qmd collection '$WIKI_NAME' already exists — skipping"
 else
-  qmd collection add "$LOCAL_DIR" --name "$REPO" \
-    || warn "qmd collection add failed — you can run it later"
-  qmd context add "qmd://$REPO" "Personal LLM wiki (Karpathy pattern)" \
+  qmd collection add "$WIKI_DIR" --name "$WIKI_NAME" \
+    || warn "qmd collection add failed — run it later"
+  qmd context add "qmd://$WIKI_NAME" "Personal LLM wiki (Karpathy pattern)" \
     || true
 fi
 
@@ -164,19 +132,22 @@ say "generating embeddings (first run downloads a model; may take a minute)"
 qmd embed || warn "qmd embed failed — run it manually later"
 
 # --------------------------------------------------------------------------
-# initial commit + push
+# commit + push (only if there are changes and origin is set)
 # --------------------------------------------------------------------------
 if [[ -n "$(git status --porcelain)" ]]; then
-  say "creating initial commit"
+  say "creating commit"
   git add -A
-  if git commit -m "chore: scaffold wiki layout"; then
-    # Normalize the branch name so a fresh empty repo lands on `main`
-    # regardless of the local init.defaultBranch setting.
-    git branch -M main
-    say "pushing to origin/main"
-    git push -u origin main || warn "push failed — push manually later"
+  if git commit -m "chore: scaffold wiki layout via git-wiki setup"; then
+    # Normalize branch name to main for fresh repos.
+    git branch -M main 2>/dev/null || true
+    if git remote get-url origin >/dev/null 2>&1; then
+      say "pushing to origin/main"
+      git push -u origin main || warn "push failed — push manually later"
+    else
+      warn "no 'origin' remote set — skipping push"
+    fi
   else
-    warn "initial commit failed — check git user.name/user.email"
+    warn "commit failed — check git user.name/user.email"
   fi
 else
   warn "nothing to commit (wiki was already scaffolded)"
@@ -189,16 +160,13 @@ cat <<EOF
 
 $(say "done")
 
-  wiki repo:  https://github.com/$GH_USER/$REPO
-  local dir:  $LOCAL_DIR
+  wiki dir:    $WIKI_DIR
+  collection:  $WIKI_NAME
 
 Next steps:
-  1. cd $LOCAL_DIR
-  2. Launch your agent (Claude Code, Cursor, Copilot, …) from $LOCAL_DIR.
-     If you installed this skill via "npx skills add rarce/git-wiki", the
-     agent already discovers it. Otherwise see the repo README for manual
-     install options.
-  3. Try:
+  1. Launch your agent (Claude Code, Cursor, Copilot, …) from $WIKI_DIR.
+     It should discover the git-wiki skill at .agents/skills/git-wiki/.
+  2. Try:
        "ingest this article: <url>"
        "what do I know about <topic>?"
        "lint the wiki"
