@@ -1,12 +1,16 @@
 # git-wiki
 
-A Claude Code skill that implements [Andrej Karpathy's LLM-wiki pattern][gist]
+An [Agent Skill][spec] that implements [Andrej Karpathy's LLM-wiki pattern][gist]
 on top of a personal GitHub repo, with on-device hybrid search via [qmd][qmd].
 
 Instead of re-doing RAG on raw sources every query, the LLM maintains a
 persistent, compounding markdown wiki: it ingests sources, writes summaries
 and entity/concept pages, keeps indexes current, and answers questions from
 the wiki itself. You curate sources; the LLM does the bookkeeping.
+
+> **This repo hosts the skill, not a wiki.** Installing it gives your agent
+> the `git-wiki` capability; running `scripts/setup.sh` creates your personal
+> wiki as a separate GitHub repo (private by default).
 
 ## Architecture
 
@@ -28,12 +32,12 @@ Two root-level navigation files:
 
 ## Pieces
 
-| piece         | role                                                         |
-|---------------|--------------------------------------------------------------|
-| `gh`          | create and clone the personal GitHub wiki repo, push updates |
-| `git`         | local commits and branching                                  |
-| `qmd`         | on-device BM25 + vector + LLM-rerank search over the wiki    |
-| Claude Code   | runs the `git-wiki` skill and edits the files                |
+| piece    | role                                                         |
+|----------|--------------------------------------------------------------|
+| `gh`     | create and clone the personal GitHub wiki repo, push updates |
+| `git`    | local commits and branching                                  |
+| `qmd`    | on-device BM25 + vector + LLM-rerank search over the wiki    |
+| the skill| runs from any [Agent-Skills-compatible agent][home] and edits the files |
 
 ## Prerequisites
 
@@ -41,35 +45,50 @@ Two root-level navigation files:
 - `git` with `user.name` and `user.email` configured
 - `node` + `npm` (for `qmd`)
 - [`qmd`][qmd] (the setup script will install it globally if missing)
-- Claude Code
+- An [Agent-Skills-compatible agent][home] (Claude Code, Cursor, Copilot, …)
 
 ## Install
 
+**Primary path — Agent Skills CLI:**
+
 ```sh
-git clone https://github.com/rarce/git-wiki ~/devel/git-wiki
-cd ~/devel/git-wiki
-./setup.sh
+npx skills add rarce/git-wiki
 ```
 
-> This repo hosts the **skill** (templates, `setup.sh`, `SKILL.md`). It is
-> *not* a wiki itself — running `setup.sh` creates your personal wiki as a
-> separate GitHub repo (private by default).
+Your agent will discover the skill at its next launch. Then bootstrap your
+personal wiki by running the bundled setup script from the installed skill's
+directory (path varies by client — check `npx skills list` or your agent's
+skills directory):
 
-`setup.sh` will:
+```sh
+<path-to-installed-skill>/scripts/setup.sh
+```
+
+**Manual alternative** — clone this repo and run the script directly:
+
+```sh
+git clone https://github.com/rarce/git-wiki ~/devel/git-wiki
+~/devel/git-wiki/skills/git-wiki/scripts/setup.sh
+```
+
+Then symlink `skills/git-wiki/SKILL.md` into whichever skills directory
+your agent discovers.
+
+### What `setup.sh` does
 
 1. Check dependencies and `gh` auth.
 2. Prompt for a wiki repo name, visibility (default: private), and local path.
 3. Create the GitHub repo via `gh repo create` (skipped if it already exists).
 4. Clone it locally.
-5. Copy the scaffolding from `templates/` into the clone: `CLAUDE.md`,
-   `index.md`, `log.md`, plus the `pages/` `people/` `concepts/` `sources/`
-   directories.
+5. Copy the scaffolding from `skills/git-wiki/assets/wiki-scaffold/` into the
+   clone: `CLAUDE.md`, `index.md`, `log.md`, plus `pages/` `people/`
+   `concepts/` `sources/`.
 6. Register the wiki as a `qmd` collection and run an initial `qmd embed`.
 7. Make the first commit and push it.
 
 ## Usage
 
-From inside the wiki clone (or with `WIKI_DIR` set), invoke Claude Code and
+From inside the wiki clone (or with `WIKI_DIR` set), invoke your agent and
 use any of:
 
 - **Ingest a source**: *"ingest this article: `<url|path>`"*
@@ -80,7 +99,29 @@ use any of:
 The skill takes care of file layout, index/log updates, `qmd` re-embedding,
 and committing + pushing through `gh`.
 
-## Layout of a wiki repo
+## Skill layout (this repo)
+
+```
+rarce/git-wiki/
+├── README.md                      # this file
+└── skills/
+    └── git-wiki/                  # the Agent Skill itself
+        ├── SKILL.md               # frontmatter + instructions
+        ├── scripts/
+        │   └── setup.sh           # bootstrap for the user's personal wiki
+        └── assets/
+            └── wiki-scaffold/     # files copied into the user's wiki on setup
+                ├── CLAUDE.md      # wiki schema
+                ├── README.md
+                ├── index.md
+                ├── log.md
+                └── gitattributes
+```
+
+See [`skills/git-wiki/SKILL.md`](skills/git-wiki/SKILL.md) for the full
+skill definition, triggering rules, and operation procedures.
+
+## Layout of the wiki `setup.sh` creates
 
 ```
 <wiki-repo>/
@@ -96,12 +137,15 @@ and committing + pushing through `gh`.
 
 ## References
 
+- [Agent Skills — specification][spec] and [overview][home]
+- [skills.sh][skills] — the `npx skills add` CLI used to install this skill
 - [Karpathy's LLM-wiki gist][gist]
 - [`qmd` — Query Markdown][qmd]
-- [skills.sh][skills]
 - [GitHub CLI][gh]
 
+[home]: https://agentskills.io
+[spec]: https://agentskills.io/specification
+[skills]: https://skills.sh
 [gist]: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f
 [qmd]: https://github.com/tobi/qmd
-[skills]: https://skills.sh
 [gh]: https://cli.github.com

@@ -1,6 +1,12 @@
 ---
 name: git-wiki
-description: Maintain a personal, LLM-curated knowledge wiki in a GitHub repo using the Karpathy LLM-wiki pattern. Invoke when the user wants to ingest a source (article, paper, notes) into their wiki, query accumulated knowledge ("what do I know about X?"), or lint the wiki for drift. Uses `gh` for GitHub ops and `qmd` for local hybrid BM25+vector search.
+description: Maintain a personal, LLM-curated knowledge wiki in a GitHub repo using the Karpathy LLM-wiki pattern. Use this skill when the user wants to ingest a source (article, paper, notes, URL) into their wiki, query accumulated knowledge ("what do I know about X?", "what did I learn from Y?"), or lint the wiki for drift. Activate even when the user does not explicitly say "wiki" — e.g., "save this paper to my notes", "add this to what I know about X", or "check my notes for contradictions". Uses `gh` for GitHub operations and `qmd` for on-device hybrid BM25+vector search. Do not invoke for unrelated markdown editing or general GitHub work.
+compatibility: Requires gh (authenticated), git, node+npm, and qmd (auto-installed by scripts/setup.sh on first run). Designed for Claude Code and other agents that support Agent Skills.
+license: MIT
+metadata:
+  author: rarce
+  version: "0.1.0"
+  upstream: https://github.com/rarce/git-wiki
 ---
 
 # git-wiki
@@ -17,12 +23,32 @@ Invoke when the user asks to:
 - **query** the wiki — "what do I know about X?" / "what did I learn from Y?"
 - **lint** — "lint the wiki", "check the wiki for drift"
 
+Also activate on close synonyms, even if the user does not say "wiki":
+
+- "save this to my notes" / "add this to what I know about X"
+- "what did I learn about X last month?"
+- "check my notes for contradictions"
+
 Do **not** invoke this skill for unrelated markdown editing or general
 GitHub work.
 
+## First-time setup
+
+If the user has never run this skill before, they need to bootstrap a
+personal wiki repo. Run the bundled script from the skill root:
+
+```sh
+scripts/setup.sh
+```
+
+It creates a personal GitHub repo (private by default), clones it locally,
+scaffolds the layout from `assets/wiki-scaffold/`, registers the wiki with
+`qmd`, and makes the first commit. After that, all operations below target
+the local clone.
+
 ## Preconditions
 
-Before doing anything, resolve the wiki directory and confirm tools exist:
+Before any operation, resolve the wiki directory and confirm tools exist:
 
 ```sh
 WIKI_DIR="${WIKI_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
@@ -31,8 +57,8 @@ command -v gh && command -v qmd && command -v git
 gh auth status
 ```
 
-If `CLAUDE.md` is missing, the user has not run `setup.sh` — tell them to
-run it from the `git-wiki` project root and stop.
+If `CLAUDE.md` is missing, the wiki has not been bootstrapped — tell the
+user to run `scripts/setup.sh` (see *First-time setup* above) and stop.
 
 Always read `$WIKI_DIR/CLAUDE.md` first. It is the authoritative schema;
 this skill defers to anything written there.
@@ -167,6 +193,33 @@ to `log.md`:
 
 Push and `qmd embed`.
 
+## Failure modes and recovery
+
+- **Dirty working tree at start of `ingest`** — stop and ask the user to
+  commit/stash. Do not auto-stash.
+- **`qmd` returns empty or errors** — fall back to reading `index.md` and
+  `log.md`, plus your own Grep over the wiki dir. Tell the user qmd failed
+  and suggest `qmd embed`.
+- **Push rejected** — `git pull --rebase` then retry. Do not force-push.
+- **Missing `CLAUDE.md` in `$WIKI_DIR`** — wrong directory, or setup never
+  ran. Stop and instruct the user.
+- **`gh` not authenticated** — tell the user to run `gh auth login`. Do not
+  attempt to proceed with HTTPS tokens or SSH fallbacks.
+- **A page's frontmatter is malformed** — fix it (this is a lint finding),
+  but do not silently rewrite prose while you are at it.
+
+## Design notes
+
+- **Sources are immutable.** Only `sources/<slug>.md` files are raw
+  capture. Wiki pages are the synthesis layer and may be rewritten freely.
+- **Log prefixes matter.** The `## [YYYY-MM-DD] <op> | <title>` format is
+  designed for grep queries like `grep 'ingest |' log.md`.
+- **Compound, don't re-synthesize.** When a `query` produces a novel
+  answer, filing it as a wiki page turns one question into permanent
+  knowledge. This is the whole point of the pattern.
+- **10–15 files per ingest** is a rough signal of a healthy ingest. Too
+  few means you skipped cross-linking; too many means you're overreaching.
+
 ## Command reference
 
 Resolve the wiki directory at the start of every operation:
@@ -198,32 +251,5 @@ qmd query   "full question"     # hybrid + LLM rerank (best quality)
 qmd get     "pages/foo.md"
 qmd embed                       # re-embed after edits (fast, incremental)
 ```
-
-## Failure modes and recovery
-
-- **Dirty working tree at start of `ingest`** — stop and ask the user to
-  commit/stash. Do not auto-stash.
-- **`qmd` returns empty or errors** — fall back to reading `index.md` and
-  `log.md`, plus your own Grep over the wiki dir. Tell the user qmd failed
-  and suggest `qmd embed`.
-- **Push rejected** — `git pull --rebase` then retry. Do not force-push.
-- **Missing `CLAUDE.md` in `$WIKI_DIR`** — wrong directory, or setup never
-  ran. Stop and instruct the user.
-- **`gh` not authenticated** — tell the user to run `gh auth login`. Do not
-  attempt to proceed with HTTPS tokens or SSH fallbacks.
-- **A page's frontmatter is malformed** — fix it (this is a lint finding),
-  but do not silently rewrite prose while you are at it.
-
-## Design notes
-
-- **Sources are immutable.** Only `sources/<slug>.md` files are raw
-  capture. Wiki pages are the synthesis layer and may be rewritten freely.
-- **Log prefixes matter.** The `## [YYYY-MM-DD] <op> | <title>` format is
-  designed for grep queries like `grep 'ingest |' log.md`.
-- **Compound, don't re-synthesize.** When a `query` produces a novel
-  answer, filing it as a wiki page turns one question into permanent
-  knowledge. This is the whole point of the pattern.
-- **10–15 files per ingest** is a rough signal of a healthy ingest. Too
-  few means you skipped cross-linking; too many means you're overreaching.
 
 [gist]: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f

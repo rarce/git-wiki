@@ -37,8 +37,9 @@ prompt() {
 }
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-TEMPLATE_DIR="$SCRIPT_DIR/templates"
-[[ -d $TEMPLATE_DIR ]] || die "templates directory not found: $TEMPLATE_DIR"
+SKILL_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+TEMPLATE_DIR="$SKILL_DIR/assets/wiki-scaffold"
+[[ -d $TEMPLATE_DIR ]] || die "wiki-scaffold assets not found: $TEMPLATE_DIR"
 
 # --------------------------------------------------------------------------
 # dependency checks
@@ -193,11 +194,11 @@ $(say "done")
 
 Next steps:
   1. cd $LOCAL_DIR
-  2. Make the git-wiki skill discoverable by Claude Code, e.g.:
-       mkdir -p ~/.claude/skills/git-wiki
-       ln -s $SCRIPT_DIR/SKILL.md ~/.claude/skills/git-wiki/SKILL.md
-     (or use whatever install mechanism your Claude Code setup prefers).
-  3. Launch Claude Code from $LOCAL_DIR and try:
+  2. Launch your agent (Claude Code, Cursor, Copilot, …) from $LOCAL_DIR.
+     If you installed this skill via "npx skills add rarce/git-wiki", the
+     agent already discovers it. Otherwise see the repo README for manual
+     install options.
+  3. Try:
        "ingest this article: <url>"
        "what do I know about <topic>?"
        "lint the wiki"
