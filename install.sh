@@ -91,27 +91,61 @@ say "GitHub:      $GH_USER/$WIKI_REPO ($WIKI_VIS)"
 say "Local dir:   $WIKI_DIR"
 
 # --------------------------------------------------------------------------
-# create the wiki repo (skip if it already exists)
+# create + clone the wiki repo
+#
+# We use `gh repo create --clone` for fresh repos so the clone happens
+# atomically inside gh (via `git clone` against a known URL) rather than
+# via a follow-up `gh repo clone` — the latter queries GraphQL, which is
+# eventually consistent and often lags a fresh REST create by a few
+# seconds. For repos that already existed, we fall back to `gh repo clone`
+# with a short retry loop in case we still hit the same lag.
 # --------------------------------------------------------------------------
+REPO_EXISTED=0
 if gh repo view "$GH_USER/$WIKI_REPO" >/dev/null 2>&1; then
   warn "repo $GH_USER/$WIKI_REPO already exists — reusing it"
-else
-  say "creating GitHub repo $GH_USER/$WIKI_REPO"
-  gh repo create "$GH_USER/$WIKI_REPO" "--$WIKI_VIS" \
-    --description "Personal LLM-maintained wiki (Karpathy pattern)" \
-    >/dev/null
+  REPO_EXISTED=1
 fi
 
-# --------------------------------------------------------------------------
-# clone (skip if already cloned)
-# --------------------------------------------------------------------------
 if [[ -d "$WIKI_DIR/.git" ]]; then
   warn "$WIKI_DIR already has a git repo — skipping clone"
 else
   [[ -e "$WIKI_DIR" ]] && die "$WIKI_DIR exists and is not a git repo — move it aside"
-  say "cloning into $WIKI_DIR"
-  mkdir -p "$(dirname "$WIKI_DIR")"
-  gh repo clone "$GH_USER/$WIKI_REPO" "$WIKI_DIR"
+
+  WIKI_PARENT="$(dirname "$WIKI_DIR")"
+  WIKI_BASENAME="$(basename "$WIKI_DIR")"
+  mkdir -p "$WIKI_PARENT"
+
+  if [[ $REPO_EXISTED -eq 0 ]]; then
+    # `gh repo create --clone` clones into ./$WIKI_REPO relative to CWD.
+    # If WIKI_DIR's basename differs from the repo name, we rename after.
+    if [[ "$WIKI_REPO" != "$WIKI_BASENAME" && -e "$WIKI_PARENT/$WIKI_REPO" ]]; then
+      die "$WIKI_PARENT/$WIKI_REPO exists and gh would clone into it — move it aside"
+    fi
+    say "creating + cloning $GH_USER/$WIKI_REPO"
+    (
+      cd "$WIKI_PARENT"
+      gh repo create "$GH_USER/$WIKI_REPO" "--$WIKI_VIS" \
+        --description "Personal LLM-maintained wiki (Karpathy pattern)" \
+        --clone >/dev/null
+      if [[ "$WIKI_REPO" != "$WIKI_BASENAME" ]]; then
+        mv "$WIKI_REPO" "$WIKI_BASENAME"
+      fi
+    )
+  else
+    say "cloning existing $GH_USER/$WIKI_REPO into $WIKI_DIR"
+    # Retry on the same eventual-consistency lag in case the existing
+    # repo was created moments ago (e.g. a previous install.sh run failed
+    # right after `gh repo create`).
+    n=0
+    until gh repo clone "$GH_USER/$WIKI_REPO" "$WIKI_DIR" 2>/dev/null; do
+      n=$((n+1))
+      if [[ $n -ge 5 ]]; then
+        die "gh repo clone failed after 5 attempts — try: gh repo clone $GH_USER/$WIKI_REPO $WIKI_DIR"
+      fi
+      warn "clone attempt $n/5 failed, retrying in 2s…"
+      sleep 2
+    done
+  fi
 fi
 
 cd "$WIKI_DIR"
