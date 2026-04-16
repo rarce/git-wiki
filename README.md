@@ -6,6 +6,8 @@
 
 **A self-maintaining knowledge wiki that lives in your own GitHub repo.** Your agent ingests sources, writes the pages, keeps cross-references current, and answers from the wiki. On-device hybrid search. No server, no SaaS, no DB — `git push` is the backend.
 
+![git-wiki demo](assets/demo.gif)
+
 ```sh
 bash <(curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh)
 ```

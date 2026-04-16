@@ -3,3 +3,7 @@
 
 # macOS
 .DS_Store
+
+# local-only demo recording pipeline (kept out of the published skill)
+/scripts/
+/assets/*.cast
