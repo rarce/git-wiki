@@ -1,34 +1,67 @@
 # git-wiki
 
-An [Agent Skill][spec] that implements [Andrej Karpathy's LLM-wiki pattern][gist]
-on top of a personal GitHub repo, with on-device hybrid search via [qmd][qmd].
+[![License: MIT](https://img.shields.io/github/license/rarce/git-wiki)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/rarce/git-wiki?style=social)](https://github.com/rarce/git-wiki/stargazers)
+[![Agent Skills compatible](https://img.shields.io/badge/Agent%20Skills-compatible-blue)](https://agentskills.io)
 
-Instead of re-doing RAG on raw sources every query, the LLM maintains a
-persistent, compounding markdown wiki: it ingests sources, writes summaries
-and entity/concept pages, keeps indexes current, and answers questions from
-the wiki itself. You curate sources; the LLM does the bookkeeping.
+**A self-maintaining knowledge wiki that lives in your own GitHub repo.** Your agent ingests sources, writes the pages, keeps cross-references current, and answers from the wiki. On-device hybrid search. No server, no SaaS, no DB — `git push` is the backend.
+
+```sh
+bash <(curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh)
+```
+
+## Features
+
+- **Compounds over time** — every ingested source and answered query enriches the wiki.
+- **Your repo is the store** — versioned, portable, shareable via URL, rendered by GitHub, diffs as a change log. Zero local state to corrupt.
+- **On-device hybrid search** — BM25 + vector + LLM rerank via [`qmd`][qmd]. No external API, no embeddings uploaded anywhere.
+- **No server, no SaaS** — the only runtime is `bash`, `git`, `gh`, and `qmd`.
+- **Agent-Skills standard** — works with Claude Code, Cursor, Codex, Copilot, or any [Agent-Skills-compatible agent][home].
+- **Lint for drift** — stale dates, orphans, broken links, index drift, missing cross-references, and contradictions.
+
+## How it works
+
+Three layers from the [Karpathy LLM-wiki pattern][gist]:
+
+1. **Raw sources** (`sources/`) — articles, papers, notes. Immutable; the LLM reads but never rewrites them.
+2. **Wiki pages** (`pages/`, `people/`, `concepts/`) — LLM-owned markdown; synthesis accumulates here.
+3. **Schema** (`CLAUDE.md` + `SKILL.md`) — conventions and workflows the LLM follows.
+
+Two navigation files:
+
+- **`index.md`** — content catalog, grouped by category. Read first on every query.
+- **`log.md`** — append-only chronological record, grep-friendly (`## [YYYY-MM-DD] <op> | <title>`).
+
+```
+ingest                                        query
+  │                                             │
+  ▼                                             ▼
+sources/ ──► wiki pages ──► index.md ──► answer with citations
+                 ▲                  │
+                 └───── qmd search ─┘
+```
+
+## git-wiki vs classic RAG
+
+|                    | Classic RAG            | git-wiki                       |
+|--------------------|------------------------|--------------------------------|
+| What's retrieved   | raw chunks             | curated wiki pages             |
+| Quality over time  | flat                   | compounds with each ingest     |
+| Storage            | vector DB              | markdown in git                |
+| Contradictions     | silently coexist       | surfaced by `lint`             |
+| Ownership          | vendor-specific DB     | a GitHub repo you own          |
+| Portability        | migrate DB, reindex    | `gh repo clone`                |
+
+## Who this is for
+
+- You read a lot (papers, articles, docs) and wish your agent remembered it.
+- You want your knowledge **portable, versioned, and yours** — not locked in a vendor DB.
+- You already work in an Agent-Skills-compatible editor (Claude Code, Cursor, Codex, Copilot…).
+- You prefer plain markdown + git over proprietary formats.
 
 > **This repo hosts the skill, not a wiki.** Installing it gives your agent
 > the `git-wiki` capability; running `scripts/setup.sh` creates your personal
 > wiki as a separate GitHub repo (private by default).
-
-## Architecture
-
-Three layers, per the Karpathy pattern:
-
-1. **Raw sources** (`sources/`) — immutable articles, papers, notes. The LLM
-   reads these but never rewrites them.
-2. **Wiki pages** (`pages/`, `people/`, `concepts/`, …) — LLM-generated
-   markdown, fully owned by the LLM. This is where synthesis accumulates.
-3. **Schema** (`CLAUDE.md` inside the wiki repo, plus this skill's `SKILL.md`) —
-   the conventions, page formats, and workflows the LLM follows.
-
-Two root-level navigation files:
-
-- **`index.md`** — content-oriented catalog, grouped by category. Updated on
-  every ingest. The LLM reads this first when answering queries.
-- **`log.md`** — append-only chronological record. Every entry is prefixed
-  with `## [YYYY-MM-DD] <op> | <title>` so it is grep-friendly.
 
 ## Pieces
 
