@@ -18,7 +18,7 @@ Root-level files are project documentation and entry points: `README.md`,
   when ShellCheck is available.
 - `bash install.sh` runs the full interactive installer, creating or reusing a
   wiki repo. Use `WIKI_VIS=local` to avoid GitHub publishing; other modes
-  exercise GitHub, `npx`, and `qmd` side effects.
+  exercise GitHub and `npx` side effects. `qmd` must already be installed.
 
 ## Coding Style & Naming Conventions
 
@@ -51,6 +51,6 @@ updates only when changing README visuals or demo assets.
 ## Security & Configuration Tips
 
 Do not commit personal wiki content, tokens, generated local clones, or machine
-specific paths. `install.sh` and `setup.sh` call `npm`, `npx`, `git`, `qmd`,
-and optionally `gh`; document new network or authentication requirements
-clearly before adding them.
+specific paths. `install.sh` calls `npm`, `npx`, `git`, `qmd`, and optionally
+`gh`; `setup.sh` must not install external packages. Document new network or
+authentication requirements clearly before adding them.

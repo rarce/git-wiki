@@ -61,6 +61,7 @@ say "checking dependencies"
 require git  "install git"
 require node "install node (e.g. brew install node)"
 require npm  "install npm (comes with node)"
+require qmd  "install qmd before running install.sh; see the README prerequisites"
 
 if ! git config --get user.email >/dev/null 2>&1; then
   die "git user.email is not set — run: git config --global user.email you@example.com"

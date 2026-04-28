@@ -79,8 +79,8 @@ sources/ ──► wiki pages ──► index.md ──► answer with citations
 
 - [`gh`][gh] authenticated (`gh auth status`) for GitHub-backed installs
 - `git` with `user.name` and `user.email` configured
-- `node` + `npm` (for `qmd`)
-- [`qmd`][qmd] (the setup script will install it globally if missing)
+- `node` + `npm` (for `npx skills add`)
+- [`qmd`][qmd] installed and available on `PATH`
 - An [Agent-Skills-compatible agent][home] (Claude Code, Cursor, Copilot, …)
 
 ## Install
@@ -93,8 +93,8 @@ bash <(curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh
 
 The installer will:
 
-1. Check dependencies (`git`, `node`, `npm`, and authenticated `gh` unless
-   using local-only mode).
+1. Check dependencies (`git`, `node`, `npm`, `qmd`, and authenticated `gh`
+   unless using local-only mode).
 2. Prompt for a wiki repo name, visibility (`private`, `public`, or `local`),
    and local wiki path.
 3. Create the wiki repo: `gh repo create --clone` for GitHub-backed installs,
@@ -105,7 +105,7 @@ The installer will:
    (`.agents/skills/git-wiki/scripts/setup.sh`), which lays out `CLAUDE.md`,
    `index.md`, `log.md`, `pages/`, `people/`, `concepts/`, `sources/`,
    registers the wiki with `qmd`, commits, and pushes only when an `origin`
-   remote exists.
+   remote exists. The scaffolder does not install external packages.
 
 ### Non-interactive (env vars)
 

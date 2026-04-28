@@ -2,10 +2,9 @@
 # setup.sh — scaffold the Karpathy LLM-wiki layout into the current repo
 # and register it with qmd for on-device hybrid search.
 #
-# Run this from inside an existing git repo for your wiki. This script
-# does NOT create the repo or clone it — it assumes that has already
-# happened (by install.sh, by `gh repo create --clone`, by `git init`, or
-# by hand). See the repo README for the full install flow.
+# Run this from inside an existing git repo where the git-wiki skill is
+# already installed. This script does NOT create, clone, publish, or install
+# the repo or skill. It only scaffolds the wiki layout.
 #
 # Usage:
 #   .agents/skills/git-wiki/scripts/setup.sh
@@ -37,14 +36,7 @@ TEMPLATE_DIR="$SKILL_DIR/assets/wiki-scaffold"
 # --------------------------------------------------------------------------
 WIKI_DIR="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -z $WIKI_DIR ]]; then
-  die "not inside a git repo — create one first, e.g.:
-    gh repo create my-wiki --private --clone
-    cd my-wiki
-    npx -y skills add rarce/git-wiki
-    .agents/skills/git-wiki/scripts/setup.sh
-
-  Or use the one-shot installer:
-    bash <(curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh)"
+  die "not inside a git repo — run this from the wiki repo that already contains .agents/skills/git-wiki/"
 fi
 
 # --------------------------------------------------------------------------
@@ -52,18 +44,11 @@ fi
 # --------------------------------------------------------------------------
 say "checking dependencies"
 require git  "install git"
-require node "install node (e.g. brew install node)"
-require npm  "install npm (comes with node)"
+require qmd  "install qmd before running setup; see the project README"
 
 if ! git config --get user.email >/dev/null 2>&1; then
   warn "git user.email is not set — the initial commit will fail."
   warn "run: git config --global user.email you@example.com"
-fi
-
-if ! command -v qmd >/dev/null 2>&1; then
-  say "qmd not found — installing @tobilu/qmd globally via npm"
-  npm install -g @tobilu/qmd \
-    || die "npm install failed — try manually: npm i -g @tobilu/qmd"
 fi
 
 # gh is used by remote-backed wiki workflows, not by local-only setup.
