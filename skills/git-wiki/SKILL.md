@@ -1,7 +1,7 @@
 ---
 name: git-wiki
-description: Maintain a personal, LLM-curated knowledge wiki in a GitHub repo using the Karpathy LLM-wiki pattern. Use this skill when the user wants to ingest a source (article, paper, notes, URL) into their wiki, query accumulated knowledge ("what do I know about X?", "what did I learn from Y?"), or lint the wiki for drift. Activate even when the user does not explicitly say "wiki" — e.g., "save this paper to my notes", "add this to what I know about X", or "check my notes for contradictions". Uses `gh` for GitHub operations and `qmd` for on-device hybrid BM25+vector search. Do not invoke for unrelated markdown editing or general GitHub work.
-compatibility: Requires gh (authenticated), git, node+npm, and qmd (auto-installed by scripts/setup.sh on first run). Designed for Claude Code and other agents that support Agent Skills.
+description: Maintain a personal, LLM-curated knowledge wiki in a git repo using the Karpathy LLM-wiki pattern. Use this skill when the user wants to ingest a source (article, paper, notes, URL) into their wiki, query accumulated knowledge ("what do I know about X?", "what did I learn from Y?"), or lint the wiki for drift. Activate even when the user does not explicitly say "wiki" — e.g., "save this paper to my notes", "add this to what I know about X", or "check my notes for contradictions". Uses `qmd` for on-device hybrid BM25+vector search and `gh` only for GitHub-backed wiki repos. Do not invoke for unrelated markdown editing or general GitHub work.
+compatibility: Requires git, node+npm, and qmd (auto-installed by scripts/setup.sh on first run). GitHub-backed repos also require authenticated gh. Designed for Claude Code and other agents that support Agent Skills.
 license: MIT
 metadata:
   author: rarce
@@ -11,9 +11,10 @@ metadata:
 
 # git-wiki
 
-Ingest, query, and lint a personal markdown wiki stored in a GitHub repo,
+Ingest, query, and lint a personal markdown wiki stored in a git repo,
 using the three-layer [Karpathy LLM-wiki pattern][gist]: raw sources →
-wiki pages → schema. `gh` handles GitHub; `qmd` handles search.
+wiki pages → schema. `qmd` handles search; `gh` is only needed when the
+wiki has a GitHub remote.
 
 ## When to use this skill
 
@@ -44,6 +45,12 @@ It creates a personal GitHub repo (private by default), clones it,
 installs this skill into the clone at `.agents/skills/git-wiki/`, runs
 the bundled scaffolder, and pushes the initial commit.
 
+For a local-only wiki that is not published to GitHub, use:
+
+```sh
+WIKI_VIS=local bash <(curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh)
+```
+
 If the user prefers to run the steps manually (or already has a wiki repo
 they want to add the skill to), the equivalent sequence is:
 
@@ -54,9 +61,19 @@ npx -y skills add rarce/git-wiki
 .agents/skills/git-wiki/scripts/setup.sh
 ```
 
+For manual local-only setup:
+
+```sh
+mkdir my-wiki
+cd my-wiki
+git init -b main
+npx -y skills add rarce/git-wiki
+GIT_WIKI_LOCAL=1 .agents/skills/git-wiki/scripts/setup.sh
+```
+
 `scripts/setup.sh` is the *scaffolder*: it must be run from inside an
-existing git clone. It does not create or clone the repo. After it
-completes, all operations below target the local clone.
+existing git repo. It does not create or clone the repo. After it
+completes, all operations below target that local repo.
 
 ## Preconditions
 
@@ -65,8 +82,10 @@ Before any operation, resolve the wiki directory and confirm tools exist:
 ```sh
 WIKI_DIR="${WIKI_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 test -f "$WIKI_DIR/CLAUDE.md"          # schema present → right directory
-command -v gh && command -v qmd && command -v git
-gh auth status
+command -v qmd && command -v git
+if git -C "$WIKI_DIR" remote get-url origin >/dev/null 2>&1; then
+  command -v gh && gh auth status
+fi
 ```
 
 If `CLAUDE.md` is missing, the wiki has not been bootstrapped — tell the
@@ -80,8 +99,8 @@ this skill defers to anything written there.
 ### ingest
 
 Ingesting a source means: saving the raw source, writing synthesis into
-wiki pages, cross-linking, updating the index and log, committing, pushing,
-and re-embedding. A good ingest touches **10–15 files**.
+wiki pages, cross-linking, updating the index and log, committing, pushing
+when a remote exists, and re-embedding. A good ingest touches **10–15 files**.
 
 1. **Clean tree check.** `git -C "$WIKI_DIR" status --porcelain` must be
    empty. If dirty, ask the user to stash or commit first.
@@ -129,11 +148,13 @@ and re-embedding. A good ingest touches **10–15 files**.
    <one paragraph: what the source was about, what pages were created or
    updated (list them), any notable cross-references.>
    ```
-8. **Commit + push.**
+8. **Commit + optional push.**
    ```sh
    git -C "$WIKI_DIR" add -A
    git -C "$WIKI_DIR" commit -m "ingest: <title>"
-   git -C "$WIKI_DIR" push
+   if git -C "$WIKI_DIR" remote get-url origin >/dev/null 2>&1; then
+     git -C "$WIKI_DIR" push
+   fi
    ```
 9. **Re-embed.** `qmd embed` — only changed files are re-embedded, so this
    is fast.
@@ -167,8 +188,8 @@ new page.
    <one line: what was asked; which pages answered it.>
    ```
 7. **Commit** only if you wrote anything (a new page, a log entry, or
-   both). Use `git commit -m "query: <short question>"` and push. If you
-   only read, no commit.
+   both). Use `git commit -m "query: <short question>"` and push only when
+   an `origin` remote exists. If you only read, no commit.
 
 ### lint
 
@@ -203,7 +224,7 @@ to `log.md`:
 <checks run; issues found; fixes applied; files touched.>
 ```
 
-Push and `qmd embed`.
+Push only when an `origin` remote exists, then run `qmd embed`.
 
 ## Failure modes and recovery
 
@@ -213,10 +234,11 @@ Push and `qmd embed`.
   `log.md`, plus your own Grep over the wiki dir. Tell the user qmd failed
   and suggest `qmd embed`.
 - **Push rejected** — `git pull --rebase` then retry. Do not force-push.
+  Ignore this for local-only repos with no `origin`.
 - **Missing `CLAUDE.md` in `$WIKI_DIR`** — wrong directory, or setup never
   ran. Stop and instruct the user.
-- **`gh` not authenticated** — tell the user to run `gh auth login`. Do not
-  attempt to proceed with HTTPS tokens or SSH fallbacks.
+- **`gh` not authenticated** — for GitHub-backed repos, tell the user to
+  run `gh auth login`. Local-only repos do not need `gh`.
 - **A page's frontmatter is malformed** — fix it (this is a lint finding),
   but do not silently rewrite prose while you are at it.
 
@@ -240,17 +262,18 @@ Resolve the wiki directory at the start of every operation:
 WIKI_DIR="${WIKI_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 ```
 
-GitHub / git:
+Git / GitHub:
 
 ```sh
-gh auth status                                    # confirm auth
-gh repo view                                      # see the wiki repo
 git -C "$WIKI_DIR" status
 git -C "$WIKI_DIR" log --oneline -20
 git -C "$WIKI_DIR" add -A
 git -C "$WIKI_DIR" commit -m "<op>: <title>"
-git -C "$WIKI_DIR" pull --rebase
-git -C "$WIKI_DIR" push
+git -C "$WIKI_DIR" remote get-url origin          # see whether it has a remote
+git -C "$WIKI_DIR" pull --rebase                  # remote-backed only
+git -C "$WIKI_DIR" push                           # remote-backed only
+gh auth status                                    # GitHub-backed only
+gh repo view                                      # GitHub-backed only
 ```
 
 qmd:

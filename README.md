@@ -4,20 +4,20 @@
 [![GitHub stars](https://img.shields.io/github/stars/rarce/git-wiki?style=social)](https://github.com/rarce/git-wiki/stargazers)
 [![Agent Skills compatible](https://img.shields.io/badge/Agent%20Skills-compatible-blue)](https://agentskills.io)
 
-**A self-maintaining knowledge wiki that lives in your own GitHub repo.** Your agent ingests sources, writes the pages, keeps cross-references current, and answers from the wiki. On-device hybrid search. No server, no SaaS, no DB — `git push` is the backend.
-
-![git-wiki demo](assets/demo.gif)
+**A self-maintaining knowledge wiki that lives in your own git repo.** Your agent ingests sources, writes the pages, keeps cross-references current, and answers from the wiki. On-device hybrid search. No server, no SaaS, no DB — local commits by default, optional GitHub publishing.
 
 ```sh
 bash <(curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh)
 ```
 
+![git-wiki demo](assets/demo.gif)
+
 ## Features
 
 - **Compounds over time** — every ingested source and answered query enriches the wiki.
-- **Your repo is the store** — versioned, portable, shareable via URL, rendered by GitHub, diffs as a change log. Zero local state to corrupt.
+- **Your repo is the store** — versioned, portable, shareable locally or via GitHub, diffs as a change log. Zero hidden state to corrupt.
 - **On-device hybrid search** — BM25 + vector + LLM rerank via [`qmd`][qmd]. No external API, no embeddings uploaded anywhere.
-- **No server, no SaaS** — the only runtime is `bash`, `git`, `gh`, and `qmd`.
+- **No server, no SaaS** — the only runtime is `bash`, `git`, `qmd`, and optionally `gh` for GitHub sync.
 - **Agent-Skills standard** — works with Claude Code, Cursor, Codex, Copilot, or any [Agent-Skills-compatible agent][home].
 - **Lint for drift** — stale dates, orphans, broken links, index drift, missing cross-references, and contradictions.
 
@@ -51,8 +51,8 @@ sources/ ──► wiki pages ──► index.md ──► answer with citations
 | Quality over time  | flat                   | compounds with each ingest     |
 | Storage            | vector DB              | markdown in git                |
 | Contradictions     | silently coexist       | surfaced by `lint`             |
-| Ownership          | vendor-specific DB     | a GitHub repo you own          |
-| Portability        | migrate DB, reindex    | `gh repo clone`                |
+| Ownership          | vendor-specific DB     | a git repo you own             |
+| Portability        | migrate DB, reindex    | `git clone` / local copy       |
 
 ## Who this is for
 
@@ -63,20 +63,21 @@ sources/ ──► wiki pages ──► index.md ──► answer with citations
 
 > **This repo hosts the skill, not a wiki.** Installing it gives your agent
 > the `git-wiki` capability; running `scripts/setup.sh` creates your personal
-> wiki as a separate GitHub repo (private by default).
+> wiki as a separate repo. The installer creates a private GitHub repo by
+> default, or a local-only repo with `WIKI_VIS=local`.
 
 ## Pieces
 
 | piece    | role                                                         |
 |----------|--------------------------------------------------------------|
-| `gh`     | create and clone the personal GitHub wiki repo, push updates |
+| `gh`     | create, clone, and push GitHub-backed wiki repos (optional for local-only) |
 | `git`    | local commits and branching                                  |
 | `qmd`    | on-device BM25 + vector + LLM-rerank search over the wiki    |
 | the skill| runs from any [Agent-Skills-compatible agent][home] and edits the files |
 
 ## Prerequisites
 
-- [`gh`][gh] authenticated (`gh auth status`)
+- [`gh`][gh] authenticated (`gh auth status`) for GitHub-backed installs
 - `git` with `user.name` and `user.email` configured
 - `node` + `npm` (for `qmd`)
 - [`qmd`][qmd] (the setup script will install it globally if missing)
@@ -92,17 +93,19 @@ bash <(curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh
 
 The installer will:
 
-1. Check dependencies (`gh` authenticated, `git`, `node`, `npm`).
-2. Prompt for a wiki repo name, visibility (default: `private`), and local
-   clone path.
-3. `gh repo create` + `gh repo clone` — your wiki repo lands on GitHub and
-   on disk.
+1. Check dependencies (`git`, `node`, `npm`, and authenticated `gh` unless
+   using local-only mode).
+2. Prompt for a wiki repo name, visibility (`private`, `public`, or `local`),
+   and local wiki path.
+3. Create the wiki repo: `gh repo create --clone` for GitHub-backed installs,
+   or `git init` for `WIKI_VIS=local`.
 4. `npx -y skills add rarce/git-wiki` — drops the skill into
-   `.agents/skills/git-wiki/` **inside the wiki clone**.
+   `.agents/skills/git-wiki/` **inside the wiki repo**.
 5. Runs the bundled scaffolder
    (`.agents/skills/git-wiki/scripts/setup.sh`), which lays out `CLAUDE.md`,
    `index.md`, `log.md`, `pages/`, `people/`, `concepts/`, `sources/`,
-   registers the wiki with `qmd`, commits, and pushes.
+   registers the wiki with `qmd`, commits, and pushes only when an `origin`
+   remote exists.
 
 ### Non-interactive (env vars)
 
@@ -110,6 +113,13 @@ All three prompts can be pre-set:
 
 ```sh
 WIKI_REPO=my-wiki WIKI_VIS=private WIKI_DIR=~/wiki \
+  bash <(curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh)
+```
+
+For a local-only wiki that is never published to GitHub:
+
+```sh
+WIKI_REPO=my-wiki WIKI_VIS=local WIKI_DIR=~/wiki \
   bash <(curl -sL https://raw.githubusercontent.com/rarce/git-wiki/main/install.sh)
 ```
 
@@ -138,12 +148,22 @@ npx -y skills add rarce/git-wiki
 .agents/skills/git-wiki/scripts/setup.sh
 ```
 
-The scaffolder expects to be run from inside a git clone; it will not
-create or clone a repo for you.
+For manual local-only setup:
+
+```sh
+mkdir my-wiki
+cd my-wiki
+git init -b main
+npx -y skills add rarce/git-wiki
+GIT_WIKI_LOCAL=1 .agents/skills/git-wiki/scripts/setup.sh
+```
+
+The scaffolder expects to be run from inside a git repo; it will not create
+or clone a repo for you.
 
 ## Usage
 
-From inside the wiki clone (or with `WIKI_DIR` set), invoke your agent and
+From inside the wiki repo (or with `WIKI_DIR` set), invoke your agent and
 use any of:
 
 - **Ingest a source**: *"ingest this article: `<url|path>`"*
@@ -152,7 +172,7 @@ use any of:
   links, index drift, and missing cross-references.
 
 The skill takes care of file layout, index/log updates, `qmd` re-embedding,
-and committing + pushing through `gh`.
+and local commits. GitHub-backed repos can also push to `origin`.
 
 ## Skill layout (this repo)
 

@@ -2,10 +2,10 @@
 # setup.sh — scaffold the Karpathy LLM-wiki layout into the current repo
 # and register it with qmd for on-device hybrid search.
 #
-# Run this from inside an existing clone of your wiki repo. This script
-# does NOT create the GitHub repo or clone it — it assumes that has
-# already happened (by install.sh, by `gh repo create --clone`, or by
-# hand). See the repo README for the full install flow.
+# Run this from inside an existing git repo for your wiki. This script
+# does NOT create the repo or clone it — it assumes that has already
+# happened (by install.sh, by `gh repo create --clone`, by `git init`, or
+# by hand). See the repo README for the full install flow.
 #
 # Usage:
 #   .agents/skills/git-wiki/scripts/setup.sh
@@ -66,11 +66,13 @@ if ! command -v qmd >/dev/null 2>&1; then
     || die "npm install failed — try manually: npm i -g @tobilu/qmd"
 fi
 
-# gh is used at runtime by the skill, not by this scaffolder — warn if absent.
-if ! command -v gh >/dev/null 2>&1; then
-  warn "gh CLI not found — install from https://cli.github.com so the skill can use it later"
-elif ! gh auth status >/dev/null 2>&1; then
-  warn "gh is installed but not authenticated — run: gh auth login"
+# gh is used by remote-backed wiki workflows, not by local-only setup.
+if [[ ${GIT_WIKI_LOCAL:-0} != 1 ]]; then
+  if ! command -v gh >/dev/null 2>&1; then
+    warn "gh CLI not found — install from https://cli.github.com so the skill can use it later"
+  elif ! gh auth status >/dev/null 2>&1; then
+    warn "gh is installed but not authenticated — run: gh auth login"
+  fi
 fi
 
 # --------------------------------------------------------------------------
